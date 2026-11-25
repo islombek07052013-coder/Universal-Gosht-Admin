@@ -1,3 +1,7 @@
+// Supabase ulanish sozlamalari (sizning loyihangizga moslangan)
+const SUPABASE_URL = "https://sissxncuyhlwnnasikfi.supabase.co";
+const SUPABASE_KEY = "PUBLISHABLE_KEY_NI_SHU_YERGA_YOYING"; // Rasmdagi Publishable keyni to'liq qo'ying
+
 const ADMIN_PASS_KEY = "ugm_admin_pass";
 const DEFAULT_ADMIN_PASS = "1234";
 
@@ -15,12 +19,131 @@ const INITIAL_PRODUCTS = [
   { id: 11, name: "Tovuq qanotchalari marinad (xom)", category: "tayyor", price: 45000, unit: "kg", inStock: true, img: "https://images.unsplash.com/photo-1527477396000-e27163b481c2?auto=format&fit=crop&w=700&q=80", desc: "Duxovka yoki mangalda pishirish uchun tayyor xom qanotchalar." }
 ];
 
-let products = JSON.parse(localStorage.getItem("ugm_products") || "null") || INITIAL_PRODUCTS;
-let storeSettings = JSON.parse(localStorage.getItem("ugm_settings") || "null") || {
+let products = [];
+let storeSettings = {
   promo: "🔥 AKSIYA: Bugun 5 kg dan ortiq xaridlarga yetkazib berish BEPUL!",
   time: "Bugun, 05:30",
   origin: "Yaylov boqma moli"
 };
+
+function hasSupabase() {
+  return SUPABASE_URL.startsWith("https://") && SUPABASE_KEY && !SUPABASE_KEY.includes("SHU_YERGA");
+}
+
+function sbHeaders() {
+  return {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+    "Prefer": "return=representation"
+  };
+}
+
+function mapDbToProduct(row) {
+  return {
+    id: Number(row.id),
+    name: row.name,
+    category: row.category,
+    price: Number(row.price),
+    unit: row.unit || "kg",
+    inStock: Boolean(row.in_stock),
+    img: row.img || "",
+    desc: row.desc || ""
+  };
+}
+
+function mapProductToDb(p, orderIdx = 0) {
+  return {
+    id: Number(p.id),
+    name: p.name,
+    category: p.category,
+    price: Number(p.price),
+    unit: p.unit || "kg",
+    in_stock: Boolean(p.inStock),
+    img: p.img || "",
+    desc: p.desc || "",
+    sort_order: orderIdx
+  };
+}
+
+async function loadRemoteData() {
+  const localProds = JSON.parse(localStorage.getItem("ugm_products") || "null");
+  const localSet = JSON.parse(localStorage.getItem("ugm_settings") || "null");
+  if (localSet) storeSettings = localSet;
+
+  if (!hasSupabase()) {
+    products = localProds || [...INITIAL_PRODUCTS];
+    fillSettingsForm();
+    renderAdminList();
+    return;
+  }
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/products?select=*&order=sort_order.asc,id.asc`, {
+      headers: sbHeaders()
+    });
+    if (res.ok) {
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        products = rows.map(mapDbToProduct);
+        localStorage.setItem("ugm_products", JSON.stringify(products));
+      } else {
+        products = localProds || [...INITIAL_PRODUCTS];
+        await syncAllProductsToSupabase();
+      }
+    } else {
+      products = localProds || [...INITIAL_PRODUCTS];
+    }
+
+    const sRes = await fetch(`${SUPABASE_URL}/rest/v1/store_settings?id=eq.1&select=*`, {
+      headers: sbHeaders()
+    });
+    if (sRes.ok) {
+      const sRows = await sRes.json();
+      if (sRows && sRows[0]) {
+        storeSettings = {
+          promo: sRows[0].promo || storeSettings.promo,
+          time: sRows[0].cut_time || storeSettings.time,
+          origin: sRows[0].origin || storeSettings.origin
+        };
+        localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
+      }
+    }
+  } catch (err) {
+    console.warn("Supabase o'qishda lokal ma'lumot ishlatildi:", err);
+    products = localProds || [...INITIAL_PRODUCTS];
+  }
+
+  fillSettingsForm();
+  renderAdminList();
+}
+
+async function upsertProductToSupabase(prod, idx = 0) {
+  if (!hasSupabase()) return;
+  await fetch(`${SUPABASE_URL}/rest/v1/products?on_conflict=id`, {
+    method: "POST",
+    headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(mapProductToDb(prod, idx))
+  });
+}
+
+async function deleteProductFromSupabase(id) {
+  if (!hasSupabase()) return;
+  await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${id}`, {
+    method: "DELETE",
+    headers: sbHeaders()
+  });
+}
+
+async function syncAllProductsToSupabase() {
+  if (!hasSupabase()) return;
+  const payload = products.map((p, idx) => mapProductToDb(p, idx));
+  await fetch(`${SUPABASE_URL}/rest/v1/products?on_conflict=id`, {
+    method: "POST",
+    headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(payload)
+  });
+}
 
 function handleLogin(e) {
   e.preventDefault();
@@ -43,11 +166,10 @@ function logoutAdmin() {
 function showAdminApp() {
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("adminApp").hidden = false;
-  fillSettingsForm();
-  renderAdminList();
+  loadRemoteData();
 }
 
-function saveProductsToStorage() {
+function saveProductsLocal() {
   localStorage.setItem("ugm_products", JSON.stringify(products));
   renderAdminList();
 }
@@ -74,7 +196,7 @@ function showPreview(src) {
   }
 }
 
-function saveProduct(e) {
+async function saveProduct(e) {
   e.preventDefault();
   const editId = document.getElementById("editId").value;
   const name = document.getElementById("pName").value.trim();
@@ -84,17 +206,23 @@ function saveProduct(e) {
   const img = document.getElementById("pImgUrl").value.trim() || "https://images.unsplash.com/photo-1607623814075-e51df1bdc82f?w=600";
   const desc = document.getElementById("pDesc").value.trim();
 
+  let savedItem;
+  let idx = 0;
+
   if (editId) {
-    const idx = products.findIndex(p => p.id === Number(editId));
+    idx = products.findIndex(p => p.id === Number(editId));
     if (idx !== -1) {
       products[idx] = { ...products[idx], name, category, price, unit, img, desc };
+      savedItem = products[idx];
     }
   } else {
-    const newId = Date.now();
-    products.unshift({ id: newId, name, category, price, unit, inStock: true, img, desc });
+    savedItem = { id: Date.now(), name, category, price, unit, inStock: true, img, desc };
+    products.unshift(savedItem);
+    idx = 0;
   }
 
-  saveProductsToStorage();
+  saveProductsLocal();
+  if (savedItem) await upsertProductToSupabase(savedItem, idx);
   resetForm();
 }
 
@@ -117,17 +245,19 @@ function editProduct(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function toggleStock(id) {
-  const p = products.find(item => item.id === id);
-  if (!p) return;
-  p.inStock = !p.inStock;
-  saveProductsToStorage();
+async function toggleStock(id) {
+  const idx = products.findIndex(item => item.id === id);
+  if (idx === -1) return;
+  products[idx].inStock = !products[idx].inStock;
+  saveProductsLocal();
+  await upsertProductToSupabase(products[idx], idx);
 }
 
-function deleteProduct(id) {
+async function deleteProduct(id) {
   if (!confirm("Bu mahsulotni o'chirishga ishonchingiz komilmi?")) return;
   products = products.filter(item => item.id !== id);
-  saveProductsToStorage();
+  saveProductsLocal();
+  await deleteProductFromSupabase(id);
 }
 
 function resetForm() {
@@ -139,10 +269,11 @@ function resetForm() {
   showPreview("");
 }
 
-function resetDefaultProducts() {
+async function resetDefaultProducts() {
   if (!confirm("Standart mahsulotlar ro'yxatini qayta tiklaysizmi?")) return;
   products = [...INITIAL_PRODUCTS];
-  saveProductsToStorage();
+  saveProductsLocal();
+  await syncAllProductsToSupabase();
 }
 
 function fillSettingsForm() {
@@ -151,7 +282,7 @@ function fillSettingsForm() {
   document.getElementById("setOrigin").value = storeSettings.origin || "";
 }
 
-function saveStoreSettings(e) {
+async function saveStoreSettings(e) {
   e.preventDefault();
   storeSettings = {
     promo: document.getElementById("setPromo").value.trim(),
@@ -159,6 +290,19 @@ function saveStoreSettings(e) {
     origin: document.getElementById("setOrigin").value.trim()
   };
   localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
+
+  if (hasSupabase()) {
+    await fetch(`${SUPABASE_URL}/rest/v1/store_settings?on_conflict=id`, {
+      method: "POST",
+      headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({
+        id: 1,
+        promo: storeSettings.promo,
+        cut_time: storeSettings.time,
+        origin: storeSettings.origin
+      })
+    });
+  }
   alert("Aksiya va bugungi kirim sozlamalari saqlandi!");
 }
 

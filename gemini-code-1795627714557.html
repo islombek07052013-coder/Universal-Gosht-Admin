@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Panel — Universal Go'sht Markazi</title>
+  <meta name="theme-color" content="#0d0808">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+
+  <!-- Kirish oynasi -->
+  <div id="loginScreen" class="login-wrap">
+    <div class="login-card">
+      <div class="brand-icon" style="margin:0 auto 12px;">🥩</div>
+      <h1>UNIVERSAL ADMIN</h1>
+      <p>Do'kon boshqaruv paneliga kirish (standart parol: <b>1234</b>)</p>
+      <form onsubmit="handleLogin(event)">
+        <input type="password" id="loginPassword" placeholder="Parolni kiriting..." required>
+        <button type="submit" class="btn btn-gold" style="width:100%; margin-top:12px;">Kirish</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Asosiy Admin Panel -->
+  <div id="adminApp" hidden>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <div class="brand">
+          <div class="brand-icon">🥩</div>
+          <div>
+            <span class="brand-title">UNIVERSAL ADMIN</span>
+            <span class="brand-sub">GO'SHT MARKAZI BOSHQARUVI</span>
+          </div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" onclick="logoutAdmin()">Chiqish</button>
+      </div>
+    </header>
+
+    <main class="container main-content">
+      <!-- Statistika -->
+      <div class="stats-row">
+        <div class="stat-box">
+          <span class="s-label">Jami mahsulotlar</span>
+          <strong id="statTotal">0</strong>
+        </div>
+        <div class="stat-box">
+          <span class="s-label">Sotuvda bor</span>
+          <strong id="statInStock" style="color:#4ade80;">0</strong>
+        </div>
+        <div class="stat-box">
+          <span class="s-label">Tugagan</span>
+          <strong id="statOutStock" style="color:#f87171;">0</strong>
+        </div>
+      </div>
+
+      <!-- Mahsulot qo'shish / tahrirlash -->
+      <section class="panel-card">
+        <h2 id="formTitle">+ Yangi mahsulot qo'shish</h2>
+        <form id="productForm" onsubmit="saveProduct(event)" class="form-grid">
+          <input type="hidden" id="editId">
+
+          <input type="text" id="pName" placeholder="Mahsulot nomi (masalan: Mol lahm)" required>
+
+          <select id="pCategory" required>
+            <option value="gosht">🥩 Mol va Qo'y go'shti</option>
+            <option value="tovuq">🍗 Tovuq (xom)</option>
+            <option value="baliq">🐟 Baliqlar</option>
+            <option value="kallapocha">🦴 Kalla-pocha va qismlar</option>
+            <option value="tayyor">🔥 Pishirishga tayyor (kalapochalar)</option>
+          </select>
+
+          <input type="number" id="pPrice" placeholder="Narxi (so'mda, masalan: 98000)" min="100" required>
+
+          <select id="pUnit">
+            <option value="kg">1 kg uchun</option>
+            <option value="dona">1 dona uchun</option>
+            <option value="porsiya">1 porsiya uchun</option>
+          </select>
+
+          <!-- Rasmni fayldan yuklash yoki havola kiritish -->
+          <div class="img-input-group">
+            <input type="text" id="pImgUrl" placeholder="Rasm havolasi (URL) yoki fayl tanlang...">
+            <label class="file-btn">
+              📷 Rasm tanlash
+              <input type="file" id="pImgFile" accept="image/*" hidden onchange="handleImageFile(event)">
+            </label>
+          </div>
+
+          <input type="text" id="pDesc" placeholder="Qisqa tavsif (masalan: Yangi so'yilgan, yumshoq)">
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-gold" id="submitBtn">Saqlash</button>
+            <button type="button" class="btn btn-outline" id="cancelEditBtn" hidden onclick="resetForm()">Bekor qilish</button>
+          </div>
+        </form>
+
+        <div id="imgPreviewWrap" class="img-preview" hidden>
+          <span>Rasm ko'rinishi:</span>
+          <img id="imgPreview" alt="Rasm ko'rinishi">
+        </div>
+      </section>
+
+      <!-- Aksiya va Bugungi kirim sozlamalari -->
+      <section class="panel-card">
+        <h2>📢 Aksiya va Bugungi kirim</h2>
+        <form onsubmit="saveStoreSettings(event)" class="form-grid">
+          <input type="text" id="setPromo" placeholder="Yuqori aksiya matni">
+          <input type="text" id="setTime" placeholder="So'yilgan vaqt (masalan: Bugun, 05:30)">
+          <input type="text" id="setOrigin" placeholder="Kelib chiqishi (masalan: Yaylov boqma moli)">
+          <button type="submit" class="btn btn-gold">Sozlamalarni saqlash</button>
+        </form>
+      </section>
+
+      <!-- Mahsulotlar ro'yxati -->
+      <section class="panel-card">
+        <div class="list-header">
+          <h2>📦 Mahsulotlar ro'yxati</h2>
+          <button type="button" class="btn btn-outline btn-sm" onclick="resetDefaultProducts()">Standart ro'yxatni tiklash</button>
+        </div>
+        <div id="adminProductList" class="admin-list"></div>
+      </section>
+    </main>
+  </div>
+
+</body>
+</html>

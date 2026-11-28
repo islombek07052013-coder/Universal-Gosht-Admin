@@ -13,12 +13,11 @@
 </head>
 <body>
 
-  <!-- Kirish oynasi -->
   <div id="loginScreen" class="login-wrap">
     <div class="login-card">
       <div class="brand-icon" style="margin:0 auto 12px;">🥩</div>
       <h1>UNIVERSAL ADMIN</h1>
-      <p>Do'kon boshqaruv paneliga kirish (standart parol: <b>1234</b>)</p>
+      <p>Do'kon boshqaruv paneliga kirish (parol: <b>1234</b>)</p>
       <form onsubmit="handleLogin(event)">
         <input type="password" id="loginPassword" placeholder="Parolni kiriting..." required>
         <button type="submit" class="btn btn-gold" style="width:100%; margin-top:12px;">Kirish</button>
@@ -26,7 +25,6 @@
     </div>
   </div>
 
-  <!-- Asosiy Admin Panel -->
   <div id="adminApp" hidden>
     <header class="topbar">
       <div class="container topbar-inner">
@@ -34,15 +32,17 @@
           <div class="brand-icon">🥩</div>
           <div>
             <span class="brand-title">UNIVERSAL ADMIN</span>
-            <span class="brand-sub">GO'SHT MARKAZI BOSHQARUVI</span>
+            <span class="brand-sub">BOSHQARUV PANELI</span>
           </div>
         </div>
-        <button type="button" class="btn btn-outline btn-sm" onclick="logoutAdmin()">Chiqish</button>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" id="storeStatusBtn" class="btn btn-sm status-toggle open" onclick="toggleStoreOpenStatus()">🟢 Do'kon Ochiq</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="logoutAdmin()">Chiqish</button>
+        </div>
       </div>
     </header>
 
     <main class="container main-content">
-      <!-- Statistika -->
       <div class="stats-row">
         <div class="stat-box">
           <span class="s-label">Jami mahsulotlar</span>
@@ -53,12 +53,23 @@
           <strong id="statInStock" style="color:#4ade80;">0</strong>
         </div>
         <div class="stat-box">
-          <span class="s-label">Tugagan</span>
-          <strong id="statOutStock" style="color:#f87171;">0</strong>
+          <span class="s-label">Tugagan / Yangi zakaz</span>
+          <strong><span id="statOutStock" style="color:#f87171;">0</span> / <span id="statOrders" style="color:#38bdf8;">0</span></strong>
         </div>
       </div>
 
-      <!-- Mahsulot qo'shish / tahrirlash -->
+      <!-- KELIB TUSHGAN BUYURTMALAR -->
+      <section class="panel-card orders-section">
+        <div class="list-header">
+          <h2>🛍️ Kelib tushgan buyurtmalar</h2>
+          <button type="button" class="btn btn-outline btn-sm" onclick="loadOrders()">🔄 Yangilash</button>
+        </div>
+        <div id="ordersList" class="admin-list">
+          <p style="color:#a8a29e; font-size:0.9rem;">Buyurtmalar yuklanmoqda...</p>
+        </div>
+      </section>
+
+      <!-- MAHSULOT QO'SHISH / TAHRIRLASH -->
       <section class="panel-card">
         <h2 id="formTitle">+ Yangi mahsulot qo'shish</h2>
         <form id="productForm" onsubmit="saveProduct(event)" class="form-grid">
@@ -82,11 +93,10 @@
             <option value="porsiya">1 porsiya uchun</option>
           </select>
 
-          <!-- Rasmni fayldan yuklash yoki havola kiritish -->
           <div class="img-input-group">
-            <input type="text" id="pImgUrl" placeholder="Rasm havolasi (URL) yoki fayl tanlang...">
+            <input type="text" id="pImgUrl" placeholder="Rasm havolasi yoki galereyadan tanlang...">
             <label class="file-btn">
-              📷 Rasm tanlash
+              🖼️ Galereyadan
               <input type="file" id="pImgFile" accept="image/*" hidden onchange="handleImageFile(event)">
             </label>
           </div>
@@ -100,23 +110,26 @@
         </form>
 
         <div id="imgPreviewWrap" class="img-preview" hidden>
-          <span>Rasm ko'rinishi:</span>
+          <span>Tanlangan rasm:</span>
           <img id="imgPreview" alt="Rasm ko'rinishi">
         </div>
       </section>
 
-      <!-- Aksiya va Bugungi kirim sozlamalari -->
+      <!-- AKSIYA VA BUGUNGI KIRIM -->
       <section class="panel-card">
-        <h2>📢 Aksiya va Bugungi kirim</h2>
+        <div class="list-header">
+          <h2>📢 Aksiya va Bugungi kirim</h2>
+          <button type="button" class="btn btn-outline btn-sm" onclick="clearPromoBanner()">✕ Aksiyani tugatish</button>
+        </div>
         <form onsubmit="saveStoreSettings(event)" class="form-grid">
-          <input type="text" id="setPromo" placeholder="Yuqori aksiya matni">
+          <input type="text" id="setPromo" placeholder="Yuqori aksiya matni (bo'sh qoldirilsa aksiya o'chadi)">
           <input type="text" id="setTime" placeholder="So'yilgan vaqt (masalan: Bugun, 05:30)">
           <input type="text" id="setOrigin" placeholder="Kelib chiqishi (masalan: Yaylov boqma moli)">
           <button type="submit" class="btn btn-gold">Sozlamalarni saqlash</button>
         </form>
       </section>
 
-      <!-- Mahsulotlar ro'yxati -->
+      <!-- MAHSULOTLAR RO'YXATI -->
       <section class="panel-card">
         <div class="list-header">
           <h2>📦 Mahsulotlar ro'yxati</h2>

@@ -1,6 +1,5 @@
-// Supabase ulanish sozlamalari (sizning loyihangizga moslangan)
 const SUPABASE_URL = "https://sissxncuyhlwnnasikfi.supabase.co";
-const SUPABASE_KEY = "PUBLISHABLE_KEY_NI_SHU_YERGA_YOYING"; // Rasmdagi Publishable keyni to'liq qo'ying
+const SUPABASE_KEY = "sb_publishable_6IAQPaXyp3hr4lDsWhJK1g_KJb49aGH";
 
 const ADMIN_PASS_KEY = "ugm_admin_pass";
 const DEFAULT_ADMIN_PASS = "1234";
@@ -20,14 +19,16 @@ const INITIAL_PRODUCTS = [
 ];
 
 let products = [];
+let orders = [];
 let storeSettings = {
   promo: "🔥 AKSIYA: Bugun 5 kg dan ortiq xaridlarga yetkazib berish BEPUL!",
   time: "Bugun, 05:30",
-  origin: "Yaylov boqma moli"
+  origin: "Yaylov boqma moli",
+  isOpen: true
 };
 
 function hasSupabase() {
-  return SUPABASE_URL.startsWith("https://") && SUPABASE_KEY && !SUPABASE_KEY.includes("SHU_YERGA");
+  return SUPABASE_URL.startsWith("https://") && SUPABASE_KEY && SUPABASE_KEY.length > 10;
 }
 
 function sbHeaders() {
@@ -39,41 +40,167 @@ function sbHeaders() {
   };
 }
 
-function mapDbToProduct(row) {
-  return {
-    id: Number(row.id),
-    name: row.name,
-    category: row.category,
-    price: Number(row.price),
-    unit: row.unit || "kg",
-    inStock: Boolean(row.in_stock),
-    img: row.img || "",
-    desc: row.desc || ""
-  };
+function updateStoreStatusUI() {
+  const btn = document.getElementById("storeStatusBtn");
+  if (!btn) return;
+  const open = storeSettings.isOpen !== false;
+  btn.classList.toggle("open", open);
+  btn.classList.toggle("closed", !open);
+  btn.innerText = open ? "🟢 Do'kon Ochiq" : "🔴 Do'kon Yopiq";
 }
 
-function mapProductToDb(p, orderIdx = 0) {
-  return {
-    id: Number(p.id),
-    name: p.name,
-    category: p.category,
-    price: Number(p.price),
-    unit: p.unit || "kg",
-    in_stock: Boolean(p.inStock),
-    img: p.img || "",
-    desc: p.desc || "",
-    sort_order: orderIdx
+async function toggleStoreOpenStatus() {
+  storeSettings.isOpen = !(storeSettings.isOpen !== false);
+  updateStoreStatusUI();
+  localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
+
+  if (hasSupabase()) {
+    await fetch(`${SUPABASE_URL}/rest/v1/store_settings?on_conflict=id`, {
+      method: "POST",
+      headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify({
+        id: 1,
+        promo: storeSettings.promo,
+        cut_time: storeSettings.time,
+        origin: storeSettings.origin,
+        is_open: storeSettings.isOpen
+      })
+    });
+  }
+}
+
+function handleImageFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const maxW = 700;
+      const scale = img.width > maxW ? maxW / img.width : 1;
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const compressed = canvas.toDataURL("image/jpeg", 0.72);
+      document.getElementById("pImgUrl").value = compressed;
+      showPreview(compressed);
+    };
+    img.src = ev.target.result;
   };
+  reader.readAsDataURL(file);
+}
+
+function showPreview(src) {
+  const wrap = document.getElementById("imgPreviewWrap");
+  const img = document.getElementById("imgPreview");
+  if (src) {
+    img.src = src;
+    wrap.hidden = false;
+  } else {
+    wrap.hidden = true;
+  }
+}
+
+async function loadOrders() {
+  const container = document.getElementById("ordersList");
+  if (!hasSupabase()) {
+    container.innerHTML = `<p style="color:#a8a29e;font-size:0.86rem;">Buyurtmalarni ko'rish uchun Supabase kalitini ulang.</p>`;
+    return;
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc`, {
+      headers: sbHeaders()
+    });
+    if (res.ok) {
+      orders = await res.json();
+      renderOrders();
+    }
+  } catch (err) {
+    console.warn("Buyurtmalarni yuklashda xato:", err);
+  }
+}
+
+function renderOrders() {
+  const container = document.getElementById("ordersList");
+  const newCount = orders.filter(o => o.status !== "Yetkazildi").length;
+  const statEl = document.getElementById("statOrders");
+  if (statEl) statEl.innerText = newCount;
+
+  if (!orders || orders.length === 0) {
+    container.innerHTML = `<p style="color:#a8a29e;font-size:0.88rem;">Hozircha yangi buyurtmalar yo'q.</p>`;
+    return;
+  }
+
+  container.innerHTML = orders.map(o => {
+    const isDone = o.status === "Yetkazildi";
+    const items = Array.isArray(o.items) ? o.items : [];
+    const dateStr = o.created_at ? new Date(o.created_at).toLocaleString("uz-UZ", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "";
+
+    const addrHtml = o.address && o.address.includes("http")
+      ? `<a href="${o.address.replace("GPS: ", "")}" target="_blank" style="color:#38bdf8;text-decoration:underline;">📍 Xaritada ochish (GPS)</a>`
+      : (o.address || "Do'kondan olish");
+
+    return `
+      <div class="order-card ${isDone ? "done" : ""}">
+        <div class="order-top">
+          <div>
+            <strong>👤 ${o.customer_name}</strong> • <a href="tel:${o.customer_phone}" style="color:#e5b869;text-decoration:none;">📞 ${o.customer_phone}</a>
+            <div style="font-size:0.8rem;color:#a8a29e;">🕒 ${dateStr} • ${o.delivery_type || ""} • ${o.payment_type || ""}</div>
+          </div>
+          <span class="order-badge ${isDone ? "done" : ""}">${isDone ? "✅ Yetkazildi" : "🔔 Yangi zakaz"}</span>
+        </div>
+
+        <div style="font-size:0.86rem;">📍 <b>Manzil:</b> ${addrHtml} ${o.delivery_time ? `(${o.delivery_time})` : ""}</div>
+        ${o.note ? `<div style="font-size:0.84rem;color:#fbbf24;">📝 <b>Izoh:</b> ${o.note}</div>` : ""}
+
+        <div class="order-items-box">
+          ${items.map((it, idx) => `<div>${idx + 1}. <b>${it.name}</b> (${it.cut || ""}) — ${it.qty} ${it.unit} = ${(it.price * it.qty).toLocaleString("uz-UZ")} so'm</div>`).join("")}
+        </div>
+
+        <div class="order-footer">
+          <strong style="color:#e5b869;font-size:1rem;">💰 Jami: ${Number(o.total_price).toLocaleString("uz-UZ")} so'm</strong>
+          <div style="display:flex;gap:6px;">
+            ${!isDone ? `<button type="button" class="btn btn-sm btn-stock" onclick="markOrderDone(${o.id})">✅ Yetkazildi</button>` : ""}
+            <button type="button" class="btn btn-sm btn-del" onclick="deleteOrder(${o.id})">🗑️ O'chirish</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function markOrderDone(id) {
+  if (!hasSupabase()) return;
+  await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${id}`, {
+    method: "PATCH",
+    headers: sbHeaders(),
+    body: JSON.stringify({ status: "Yetkazildi" })
+  });
+  await loadOrders();
+}
+
+async function deleteOrder(id) {
+  if (!confirm("Bu buyurtmani o'chirasizmi?")) return;
+  if (hasSupabase()) {
+    await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${id}`, {
+      method: "DELETE",
+      headers: sbHeaders()
+    });
+  }
+  await loadOrders();
 }
 
 async function loadRemoteData() {
   const localProds = JSON.parse(localStorage.getItem("ugm_products") || "null");
   const localSet = JSON.parse(localStorage.getItem("ugm_settings") || "null");
-  if (localSet) storeSettings = localSet;
+  if (localSet) storeSettings = { ...storeSettings, ...localSet };
 
   if (!hasSupabase()) {
     products = localProds || [...INITIAL_PRODUCTS];
     fillSettingsForm();
+    updateStoreStatusUI();
     renderAdminList();
     return;
   }
@@ -85,14 +212,21 @@ async function loadRemoteData() {
     if (res.ok) {
       const rows = await res.json();
       if (Array.isArray(rows) && rows.length > 0) {
-        products = rows.map(mapDbToProduct);
+        products = rows.map(r => ({
+          id: Number(r.id),
+          name: r.name,
+          category: r.category,
+          price: Number(r.price),
+          unit: r.unit || "kg",
+          inStock: Boolean(r.in_stock),
+          img: r.img || "",
+          desc: r.desc || ""
+        }));
         localStorage.setItem("ugm_products", JSON.stringify(products));
       } else {
         products = localProds || [...INITIAL_PRODUCTS];
         await syncAllProductsToSupabase();
       }
-    } else {
-      products = localProds || [...INITIAL_PRODUCTS];
     }
 
     const sRes = await fetch(`${SUPABASE_URL}/rest/v1/store_settings?id=eq.1&select=*`, {
@@ -104,18 +238,20 @@ async function loadRemoteData() {
         storeSettings = {
           promo: sRows[0].promo || storeSettings.promo,
           time: sRows[0].cut_time || storeSettings.time,
-          origin: sRows[0].origin || storeSettings.origin
+          origin: sRows[0].origin || storeSettings.origin,
+          isOpen: sRows[0].is_open !== false
         };
         localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
       }
     }
   } catch (err) {
-    console.warn("Supabase o'qishda lokal ma'lumot ishlatildi:", err);
     products = localProds || [...INITIAL_PRODUCTS];
   }
 
   fillSettingsForm();
+  updateStoreStatusUI();
   renderAdminList();
+  await loadOrders();
 }
 
 async function upsertProductToSupabase(prod, idx = 0) {
@@ -123,21 +259,33 @@ async function upsertProductToSupabase(prod, idx = 0) {
   await fetch(`${SUPABASE_URL}/rest/v1/products?on_conflict=id`, {
     method: "POST",
     headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify(mapProductToDb(prod, idx))
-  });
-}
-
-async function deleteProductFromSupabase(id) {
-  if (!hasSupabase()) return;
-  await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${id}`, {
-    method: "DELETE",
-    headers: sbHeaders()
+    body: JSON.stringify({
+      id: Number(prod.id),
+      name: prod.name,
+      category: prod.category,
+      price: Number(prod.price),
+      unit: prod.unit || "kg",
+      in_stock: Boolean(prod.inStock),
+      img: prod.img || "",
+      desc: prod.desc || "",
+      sort_order: idx
+    })
   });
 }
 
 async function syncAllProductsToSupabase() {
   if (!hasSupabase()) return;
-  const payload = products.map((p, idx) => mapProductToDb(p, idx));
+  const payload = products.map((p, idx) => ({
+    id: Number(p.id),
+    name: p.name,
+    category: p.category,
+    price: Number(p.price),
+    unit: p.unit || "kg",
+    in_stock: Boolean(p.inStock),
+    img: p.img || "",
+    desc: p.desc || "",
+    sort_order: idx
+  }));
   await fetch(`${SUPABASE_URL}/rest/v1/products?on_conflict=id`, {
     method: "POST",
     headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
@@ -148,8 +296,7 @@ async function syncAllProductsToSupabase() {
 function handleLogin(e) {
   e.preventDefault();
   const savedPass = localStorage.getItem(ADMIN_PASS_KEY) || DEFAULT_ADMIN_PASS;
-  const entered = document.getElementById("loginPassword").value;
-  if (entered === savedPass) {
+  if (document.getElementById("loginPassword").value === savedPass) {
     sessionStorage.setItem("ugm_admin_auth", "1");
     showAdminApp();
   } else {
@@ -174,28 +321,6 @@ function saveProductsLocal() {
   renderAdminList();
 }
 
-function handleImageFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    document.getElementById("pImgUrl").value = reader.result;
-    showPreview(reader.result);
-  };
-  reader.readAsDataURL(file);
-}
-
-function showPreview(src) {
-  const wrap = document.getElementById("imgPreviewWrap");
-  const img = document.getElementById("imgPreview");
-  if (src) {
-    img.src = src;
-    wrap.hidden = false;
-  } else {
-    wrap.hidden = true;
-  }
-}
-
 async function saveProduct(e) {
   e.preventDefault();
   const editId = document.getElementById("editId").value;
@@ -218,7 +343,6 @@ async function saveProduct(e) {
   } else {
     savedItem = { id: Date.now(), name, category, price, unit, inStock: true, img, desc };
     products.unshift(savedItem);
-    idx = 0;
   }
 
   saveProductsLocal();
@@ -229,7 +353,6 @@ async function saveProduct(e) {
 function editProduct(id) {
   const p = products.find(item => item.id === id);
   if (!p) return;
-
   document.getElementById("editId").value = p.id;
   document.getElementById("pName").value = p.name;
   document.getElementById("pCategory").value = p.category;
@@ -238,7 +361,6 @@ function editProduct(id) {
   document.getElementById("pImgUrl").value = p.img;
   document.getElementById("pDesc").value = p.desc || "";
   showPreview(p.img);
-
   document.getElementById("formTitle").innerText = "✏️ Mahsulotni tahrirlash";
   document.getElementById("submitBtn").innerText = "Yangilash";
   document.getElementById("cancelEditBtn").hidden = false;
@@ -257,7 +379,12 @@ async function deleteProduct(id) {
   if (!confirm("Bu mahsulotni o'chirishga ishonchingiz komilmi?")) return;
   products = products.filter(item => item.id !== id);
   saveProductsLocal();
-  await deleteProductFromSupabase(id);
+  if (hasSupabase()) {
+    await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${id}`, {
+      method: "DELETE",
+      headers: sbHeaders()
+    });
+  }
 }
 
 function resetForm() {
@@ -284,11 +411,9 @@ function fillSettingsForm() {
 
 async function saveStoreSettings(e) {
   e.preventDefault();
-  storeSettings = {
-    promo: document.getElementById("setPromo").value.trim(),
-    time: document.getElementById("setTime").value.trim(),
-    origin: document.getElementById("setOrigin").value.trim()
-  };
+  storeSettings.promo = document.getElementById("setPromo").value.trim();
+  storeSettings.time = document.getElementById("setTime").value.trim();
+  storeSettings.origin = document.getElementById("setOrigin").value.trim();
   localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
 
   if (hasSupabase()) {
@@ -299,11 +424,12 @@ async function saveStoreSettings(e) {
         id: 1,
         promo: storeSettings.promo,
         cut_time: storeSettings.time,
-        origin: storeSettings.origin
+        origin: storeSettings.origin,
+        is_open: storeSettings.isOpen !== false
       })
     });
   }
-  alert("Aksiya va bugungi kirim sozlamalari saqlandi!");
+  alert("Sozlamalar saqlandi!");
 }
 
 function renderAdminList() {
@@ -311,7 +437,6 @@ function renderAdminList() {
   const total = products.length;
   const inStockCount = products.filter(p => p.inStock).length;
 
-  document.getElementById("statTotal").innerText = total;
   document.getElementById("statInStock").innerText = inStockCount;
   document.getElementById("statOutStock").innerText = total - inStockCount;
 

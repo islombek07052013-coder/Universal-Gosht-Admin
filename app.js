@@ -49,24 +49,37 @@ function updateStoreStatusUI() {
   btn.innerText = open ? "🟢 Do'kon Ochiq" : "🔴 Do'kon Yopiq";
 }
 
+async function persistSettings() {
+  localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
+  if (!hasSupabase()) return;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/store_settings?on_conflict=id`, {
+    method: "POST",
+    headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({
+      id: 1,
+      promo: storeSettings.promo,
+      cut_time: storeSettings.time,
+      origin: storeSettings.origin,
+      is_open: storeSettings.isOpen !== false
+    })
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("Sozlamani saqlashda xato:", errText);
+  }
+}
+
 async function toggleStoreOpenStatus() {
   storeSettings.isOpen = !(storeSettings.isOpen !== false);
   updateStoreStatusUI();
-  localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
+  await persistSettings();
+}
 
-  if (hasSupabase()) {
-    await fetch(`${SUPABASE_URL}/rest/v1/store_settings?on_conflict=id`, {
-      method: "POST",
-      headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify({
-        id: 1,
-        promo: storeSettings.promo,
-        cut_time: storeSettings.time,
-        origin: storeSettings.origin,
-        is_open: storeSettings.isOpen
-      })
-    });
-  }
+async function clearPromoBanner() {
+  storeSettings.promo = "";
+  document.getElementById("setPromo").value = "";
+  await persistSettings();
+  alert("Aksiya tugatildi va mijozlar saytida yashirildi!");
 }
 
 function handleImageFile(e) {
@@ -116,6 +129,9 @@ async function loadOrders() {
     if (res.ok) {
       orders = await res.json();
       renderOrders();
+    } else {
+      const t = await res.text();
+      container.innerHTML = `<p style="color:#f87171;font-size:0.86rem;">Xato: ${t}</p>`;
     }
   } catch (err) {
     console.warn("Buyurtmalarni yuklashda xato:", err);
@@ -236,7 +252,7 @@ async function loadRemoteData() {
       const sRows = await sRes.json();
       if (sRows && sRows[0]) {
         storeSettings = {
-          promo: sRows[0].promo || storeSettings.promo,
+          promo: sRows[0].promo !== null && sRows[0].promo !== undefined ? sRows[0].promo : storeSettings.promo,
           time: sRows[0].cut_time || storeSettings.time,
           origin: sRows[0].origin || storeSettings.origin,
           isOpen: sRows[0].is_open !== false
@@ -414,21 +430,7 @@ async function saveStoreSettings(e) {
   storeSettings.promo = document.getElementById("setPromo").value.trim();
   storeSettings.time = document.getElementById("setTime").value.trim();
   storeSettings.origin = document.getElementById("setOrigin").value.trim();
-  localStorage.setItem("ugm_settings", JSON.stringify(storeSettings));
-
-  if (hasSupabase()) {
-    await fetch(`${SUPABASE_URL}/rest/v1/store_settings?on_conflict=id`, {
-      method: "POST",
-      headers: { ...sbHeaders(), "Prefer": "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify({
-        id: 1,
-        promo: storeSettings.promo,
-        cut_time: storeSettings.time,
-        origin: storeSettings.origin,
-        is_open: storeSettings.isOpen !== false
-      })
-    });
-  }
+  await persistSettings();
   alert("Sozlamalar saqlandi!");
 }
 
@@ -437,6 +439,8 @@ function renderAdminList() {
   const total = products.length;
   const inStockCount = products.filter(p => p.inStock).length;
 
+  const totalEl = document.getElementById("statTotal");
+  if (totalEl) totalEl.innerText = total;
   document.getElementById("statInStock").innerText = inStockCount;
   document.getElementById("statOutStock").innerText = total - inStockCount;
 
